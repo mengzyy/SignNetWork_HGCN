@@ -29,23 +29,23 @@ class SignHGCN(model.BaseModel.BaseModel):
         o = torch.zeros_like(feature_data_pos)
         feature_data_pos = torch.cat([o[:, 0:1], feature_data_pos], dim=1)
         x = torch.zeros_like(feature_data_neg)
-        feature_data_neg = torch.cat([x[:, 0:1], feature_data_neg], dim=1)
-        feature_data_pos = self.hyperboloid.proj_tan0(feature_data_pos, self.c)
-        feature_data_pos = self.hyperboloid.expmap0(feature_data_pos, c=self.c)
-        feature_data_pos = self.hyperboloid.proj(feature_data_pos, c=self.c)
-        feature_data_neg = self.hyperboloid.proj_tan0(feature_data_neg, self.c)
-        feature_data_neg = self.hyperboloid.expmap0(feature_data_neg, c=self.c)
-        feature_data_neg = self.hyperboloid.proj(feature_data_neg, c=self.c)
 
-        # 正编码 output 正特征 ，hgcn卷积三次
-        feature_data_pos = self.HGraphConvolution.forward(feature_data_pos, adj_pos_matrix)
-        feature_data_pos = self.HGraphConvolution.forward(feature_data_pos, adj_pos_matrix)
-        feature_data_pos = self.HGraphConvolution.forward(feature_data_pos, adj_pos_matrix)
-        # 负编码 output 负特征 ，hgcn卷积三次
-        feature_data_neg = self.HGraphConvolution.forward(feature_data_neg, adj_neg_matrix)
-        feature_data_neg = self.HGraphConvolution.forward(feature_data_neg, adj_neg_matrix)
-        feature_data_neg = self.HGraphConvolution.forward(feature_data_neg, adj_neg_matrix)
-        # concat res.shape:self.nodes*self.feature
+        # concat res.shape:self.nodes*self.feature feature_data_neg = torch.cat([x[:, 0:1], feature_data_neg], dim=1)
+        #         feature_data_pos = self.hyperboloid.proj_tan0(feature_data_pos, self.c)
+        #         feature_data_pos = self.hyperboloid.expmap0(feature_data_pos, c=self.c)
+        #         feature_data_pos = self.hyperboloid.proj(feature_data_pos, c=self.c)
+        #         feature_data_neg = self.hyperboloid.proj_tan0(feature_data_neg, self.c)
+        #         feature_data_neg = self.hyperboloid.expmap0(feature_data_neg, c=self.c)
+        #         feature_data_neg = self.hyperboloid.proj(feature_data_neg, c=self.c)
+        #
+        #         # 正编码 output 正特征 ，hgcn卷积三次
+        #         feature_data_pos = self.HGraphConvolution.forward(feature_data_pos, adj_pos_matrix)
+        #         feature_data_pos = self.HGraphConvolution.forward(feature_data_pos, adj_pos_matrix)
+        #         feature_data_pos = self.HGraphConvolution.forward(feature_data_pos, adj_pos_matrix)
+        #         # 负编码 output 负特征 ，hgcn卷积三次
+        #         feature_data_neg = self.HGraphConvolution.forward(feature_data_neg, adj_neg_matrix)
+        #         feature_data_neg = self.HGraphConvolution.forward(feature_data_neg, adj_neg_matrix)
+        #         feature_data_neg = self.HGraphConvolution.forward(feature_data_neg, adj_neg_matrix)
         res = torch.cat([feature_data_pos, feature_data_neg], dim=1)
         return res
 

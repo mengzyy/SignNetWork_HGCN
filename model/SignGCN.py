@@ -1,31 +1,20 @@
 import model.BaseModel
 from layers import GcnLayer
 import torch
-
+import torch.nn as nn
+from torch.nn import init
 
 class SignGCN(model.BaseModel.BaseModel):
 
     def __init__(self, args):
         super(SignGCN, self).__init__(args)
         # gcn核心层
-        # gcn层，需要注意正负分开编码，使用特征大小应该是一半
-        self.gcnlayer = GcnLayer.GraphConvolution(int(self.features / 2), int(self.features / 2), args["dropout"],
-                                                  args["act"],
-                                                  args["use_bias"])
+        # gcn层,使用平衡理论
+        self.gcnlayer = GcnLayer.GraphConvolution(self.features, self.features, self.args)
 
     def encode(self, feature_data_pos, feature_data_neg, adj_pos_matrix, adj_neg_matrix):
-        # 正编码 output 正特征 ，gcn卷积三次
-        feature_data_pos = self.gcnlayer.forward(feature_data_pos, adj_pos_matrix)
-        feature_data_pos = self.gcnlayer.forward(feature_data_pos, adj_pos_matrix)
-        feature_data_pos = self.gcnlayer.forward(feature_data_pos, adj_pos_matrix)
-
-        # 负编码 output 负特征 ，gcn卷积三次
-        feature_data_neg = self.gcnlayer.forward(feature_data_neg, adj_neg_matrix)
-        feature_data_neg = self.gcnlayer.forward(feature_data_neg, adj_neg_matrix)
-        feature_data_neg = self.gcnlayer.forward(feature_data_neg, adj_neg_matrix)
-
-        # concat res.shape:self.nodes*self.feature
-        res = torch.cat([feature_data_pos, feature_data_neg], dim=1)
+        x = torch.tensor(self.args["data"]["feat_data"],dtype=torch.float32)
+        res = self.gcnlayer(x)
         return res
 
     # loss计算

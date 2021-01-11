@@ -11,6 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score, f1_score
 from random import *
+from torch.nn import init
 
 """
 父类模型构造必须实现的方法即可
@@ -20,15 +21,19 @@ from random import *
 class BaseModel(nn.Module):
     def __init__(self, args):
         super(BaseModel, self).__init__()
+
         self.nodes = args["nodes"]
         self.features = args["features"]
         # 定义交叉熵
-        self.CrossEntLoss = nn.CrossEntropyLoss()
+        self.CrossEntLoss = nn.CrossEntropyLoss(
+            weight=torch.FloatTensor(args["class_weights"]))
         # loss出口
         self.addParam = 0 if args["method"] == "GCN" else 2
         self.param_src = nn.Parameter(torch.FloatTensor((self.features + self.addParam) * 2, 3))
         self.structural_distance = nn.PairwiseDistance(p=2)
         self.lambda_structure = args["lambda_structure"]
+        self.args = args
+        init.xavier_uniform_(self.param_src)
 
     def encode(self, feature_data_pos, feature_data_neg, adj_pos_matrix, adj_neg_matrix):
         raise NotImplementedError
@@ -151,13 +156,15 @@ class BaseModel(nn.Module):
         X_train = np.asarray(X_train)
         X_val = np.asarray(X_val)
         y_test_true = np.asarray(y_test_true)
-        model = RandomForestClassifier(n_estimators=10, random_state=11, class_weight='balanced')
+        # model = RandomForestClassifier(n_estimators=10, random_state=11, class_weight='balanced')
+        model = LogisticRegression(class_weight='balanced')
         X_train_isf = np.isfinite(X_train)
         if X_train_isf.all() == False:
             return 0, 0
         model.fit(X_train, y_train)
-
         y_test_pred = model.predict(X_val)
         auc = roc_auc_score(y_test_true, y_test_pred)
         f1 = f1_score(y_test_true, y_test_pred)
+        # print(classification_report(y_test_true, y_test_pred))
+        # print("AC", accuracy_score(y_test_true, y_test_pred))
         return auc, f1
