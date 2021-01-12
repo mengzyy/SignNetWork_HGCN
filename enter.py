@@ -35,14 +35,14 @@ parser.add_argument('--act', type=str, default="relu")
 parser.add_argument('--use_bias', type=bool, default=True)
 parser.add_argument('--use_att', type=bool, default=False)
 parser.add_argument('--c', type=int, default=1)
-# gcn 卷积次数
-parser.add_argument('--layers', type=int, default=3)
+parser.add_argument('--layers', type=int, default=2)
 parser.add_argument('--class_weight_no', type=float, default=0.35)
-
 parameters = parser.parse_args()
 args = {}
 for arg in vars(parameters):
     args[arg] = getattr(parameters, arg)
+args['class_weights'] = loadData.calculate_class_weights(3775, 10176, 1119, w_no=args['class_weight_no'])
+
 # ================================================================================= #
 # 载入
 data = loadData.loadSignData(args["structure_network_file_name"], args["feature_network_file_name"],
@@ -51,12 +51,12 @@ data = loadData.loadSignData(args["structure_network_file_name"], args["feature_
 data = loadData.preProcessData(data, args["layers"])
 args["data"] = data
 args["nodes"] = data["num_nodes"]
-args['class_weights'] = loadData.calculate_class_weights(3775, 10176, 1119, w_no=args['class_weight_no'])
 # 初始化模型
 if args["method"] == "GCN":
     model = SignGCN.SignGCN(args)
 else:
     model = SignHGCN.SignHGCN(args)
+
 optimizer = torch.optim.Adagrad(filter(lambda p: p.requires_grad, model.parameters()),
                                 lr=args['learning_rate'], weight_decay=args['model_regularize'])
 train = list(np.random.permutation(list(range(0, args["nodes"]))))
