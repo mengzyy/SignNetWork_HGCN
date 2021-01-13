@@ -156,8 +156,8 @@ class BaseModel(nn.Module):
         X_train = np.asarray(X_train)
         X_val = np.asarray(X_val)
         y_test_true = np.asarray(y_test_true)
-        # model = RandomForestClassifier(n_estimators=10, random_state=11, class_weight='balanced')
-        model = LogisticRegression(class_weight='balanced')
+        model = RandomForestClassifier(n_estimators=10, random_state=11, class_weight='balanced')
+        # model = LogisticRegression(class_weight='balanced')
         X_train_isf = np.isfinite(X_train)
         if X_train_isf.all() == False:
             return 0, 0

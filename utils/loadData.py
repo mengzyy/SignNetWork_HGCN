@@ -218,18 +218,14 @@ def getNodePosAndNegByLayers(Layer, node, adj_pos_set, adj_neg_set):
     for L in range(1, Layer):
         for key in B:
             node_pos_set, node_neg_set = node2PosAndNeg(key, adj_pos_set, adj_neg_set)
-            if len(newB)<10:
-                newB = newB | node_pos_set
-            if len(newH) < 10:
-                newH = newH | node_neg_set
+            newB = newB | node_pos_set
+            newH = newH | node_neg_set
 
 
         for key in H:
             node_pos_set, node_neg_set = node2PosAndNeg(key, adj_pos_set, adj_neg_set)
-            if len(newB) < 10:
-                newB = newB | node_neg_set
-            if len(newH) < 10:
-                newH = newH | node_pos_set
+            newB = newB | node_neg_set
+            newH = newH | node_pos_set
         res[L + 1] = [newB, newH]
         B = set()
         H = set()
