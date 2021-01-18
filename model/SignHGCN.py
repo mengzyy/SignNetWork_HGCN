@@ -1,12 +1,13 @@
 import model.BaseModel
 from layers import GcnLayer, HGcnLayer
 import torch
-
+from layers import GcnLayer
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.modules.module import Module
 from utils import hyperboloid
+from layers import HGcnLayer
 
 
 class SignHGCN(model.BaseModel.BaseModel):
@@ -16,37 +17,16 @@ class SignHGCN(model.BaseModel.BaseModel):
         # 曲率
         self.c = torch.tensor(args["c"])
         self.hyperboloid = hyperboloid.Hyperboloid()
-        # gcn核心层
-        # gcn层，需要注意正负分开编码，使用特征大小应该是一半+1
-        self.HGraphConvolution = HGcnLayer.HGraphConvolution(int((self.features / 2) + 1), int((self.features / 2) + 1),
-                                                             args["dropout"],
-                                                             args["act"],
-                                                             args["use_bias"], self.c, self.c, args["use_att"],
-                                                             args["local_agg"], )
+        self.hgcnLayer=HGcnLayer.HGraphConvolution(self.features,  self.features, self.args)
 
-    def encode(self, feature_data_pos, feature_data_neg, adj_pos_matrix, adj_neg_matrix):
+    def encode(self, feature_data, feature_data_neg, adj_pos_matrix, adj_neg_matrix):
+        x = torch.tensor(self.args["data"]["feat_data"], dtype=torch.float32)
         # 特征需要先获得在HGCN空间的映射
-        o = torch.zeros_like(feature_data_pos)
-        feature_data_pos = torch.cat([o[:, 0:1], feature_data_pos], dim=1)
-        x = torch.zeros_like(feature_data_neg)
+        x = self.hyperboloid.proj_tan0(x, self.c)
+        x = self.hyperboloid.expmap0(x, c=self.c)
+        x = self.hyperboloid.proj(x, c=self.c)
 
-        # concat res.shape:self.nodes*self.feature feature_data_neg = torch.cat([x[:, 0:1], feature_data_neg], dim=1)
-        #         feature_data_pos = self.hyperboloid.proj_tan0(feature_data_pos, self.c)
-        #         feature_data_pos = self.hyperboloid.expmap0(feature_data_pos, c=self.c)
-        #         feature_data_pos = self.hyperboloid.proj(feature_data_pos, c=self.c)
-        #         feature_data_neg = self.hyperboloid.proj_tan0(feature_data_neg, self.c)
-        #         feature_data_neg = self.hyperboloid.expmap0(feature_data_neg, c=self.c)
-        #         feature_data_neg = self.hyperboloid.proj(feature_data_neg, c=self.c)
-        #
-        #         # 正编码 output 正特征 ，hgcn卷积三次
-        #         feature_data_pos = self.HGraphConvolution.forward(feature_data_pos, adj_pos_matrix)
-        #         feature_data_pos = self.HGraphConvolution.forward(feature_data_pos, adj_pos_matrix)
-        #         feature_data_pos = self.HGraphConvolution.forward(feature_data_pos, adj_pos_matrix)
-        #         # 负编码 output 负特征 ，hgcn卷积三次
-        #         feature_data_neg = self.HGraphConvolution.forward(feature_data_neg, adj_neg_matrix)
-        #         feature_data_neg = self.HGraphConvolution.forward(feature_data_neg, adj_neg_matrix)
-        #         feature_data_neg = self.HGraphConvolution.forward(feature_data_neg, adj_neg_matrix)
-        res = torch.cat([feature_data_pos, feature_data_neg], dim=1)
+        res = self.hgcnLayer(x)
         return res
 
     # loss计算

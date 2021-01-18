@@ -29,7 +29,7 @@ class BaseModel(nn.Module):
             weight=torch.FloatTensor(args["class_weights"]))
         # loss出口
         self.addParam = 0 if args["method"] == "GCN" else 2
-        self.param_src = nn.Parameter(torch.FloatTensor((self.features + self.addParam) * 2, 3))
+        self.param_src = nn.Parameter(torch.FloatTensor(self.features*6, 3))
         self.structural_distance = nn.PairwiseDistance(p=2)
         self.lambda_structure = args["lambda_structure"]
         self.args = args
@@ -156,8 +156,8 @@ class BaseModel(nn.Module):
         X_train = np.asarray(X_train)
         X_val = np.asarray(X_val)
         y_test_true = np.asarray(y_test_true)
-        model = RandomForestClassifier(n_estimators=10, random_state=11, class_weight='balanced')
-        # model = LogisticRegression(class_weight='balanced')
+        # model = RandomForestClassifier(n_estimators=10, random_state=11, class_weight='balanced')
+        model = LogisticRegression(class_weight='balanced')
         X_train_isf = np.isfinite(X_train)
         if X_train_isf.all() == False:
             return 0, 0
