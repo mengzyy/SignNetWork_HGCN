@@ -94,35 +94,11 @@ def preProcessData(data, layers):
     data["adj_pos_matrix"] = torch.tensor(data["adj_pos_matrix"], dtype=torch.float32)
     data["adj_neg_matrix"] = torch.tensor(data["adj_neg_matrix"], dtype=torch.float32)
     data["node_pos_neg_set"] = {}
-    for node in range(0,_):
+    for node in range(0, _):
         node += 1
-        data["node_pos_neg_set"][node] = getNodePosAndNegByLayers(layers, node, data["adj_lists_pos"],data["adj_lists_neg"])
-    # data["nodes_pos_neg_emb"] = {}
-    # data["layers_pos_neg_emb"] = {}
-
-    # for index in range(0, _):
-    #     data["nodes_pos_neg_emb"][index + 1] = getNodePosAndNegEmbegingByDiffLayer(layers, index + 1, data["feat_data"],
-    #                                                                                data["adj_lists_pos"],
-    #                                                                                data["adj_lists_neg"])
-    # 特殊化第一层
-    # layers_pos_emb_1 = []
-    # layers_neg_emb_1 = []
-    # for index in range(0, _):
-    #     layers_pos_emb_1.append(data["nodes_pos_neg_emb"][index + 1][1][0])
-    #     layers_neg_emb_1.append(data["nodes_pos_neg_emb"][index + 1][1][1])
-    # data["layers_pos_neg_emb"][1] = [layers_pos_emb_1, layers_neg_emb_1]
-    # # 其他层
-    # layers_pos_emb_other = []
-    # layers_neg_emb_other = []
-    # for L in range(1, layers):
-    #     L += 1
-    #     for index in range(0, _):
-    #         layers_pos_emb_other.append(data["nodes_pos_neg_emb"][index + 1][L][0])
-    #         layers_neg_emb_other.append(data["nodes_pos_neg_emb"][index + 1][L][1])
-    #         data["layers_pos_neg_emb"][L] = [layers_pos_emb_other, layers_neg_emb_other]
-    #     layers_pos_emb_other = []
-    #     layers_neg_emb_other = []
-
+        # update： layer不影响邻接矩阵
+        data["node_pos_neg_set"][node] = getNodePosAndNegByLayers(node, data["adj_lists_pos"],
+                                                                  data["adj_lists_neg"])
     return data
 
 
@@ -155,84 +131,28 @@ def getNodePosAndNegEmbeging(nodeIndex, featureData, adj_pos_set, adj_neg_set):
     return res[0], res[1], len(node_pos_set), len(node_neg_set)
 
 
-# 根据前一层的特征矩阵------》获得某个节点的feature表示,需要注意的是，2层之后，特征矩阵为 2*d
+# 根据前一层的特征矩阵------》获得某个节点的feature表示,【需要注意的是，2层及其之后，特征矩阵为 3*d,因为包含了：朋友下层表示，敌人下层表示，当前自己表示】
 # L为当前层
 def getNodePosAndNegEmbegingByDiffLayer(data, L, nodeIndex, featureData, adj_pos_set, adj_neg_set):
     res = []
-    # 获取节点特征
-
     if L == 1:
         l, r = featureData.shape
         # 首先定义第一层，因为向量表达不同
         pos_emb, neg_emb, c1, c2 = getNodePosAndNegEmbeging(nodeIndex, featureData, adj_pos_set, adj_neg_set)
         res = [pos_emb, neg_emb]
     elif L > 1:
-        l, r = featureData[0].shape
-        B, H = data["node_pos_neg_set"][nodeIndex][L]
-        pos_pos = [0] * r
-        pos_neg = [0] * r
-        neg_pos = [0] * r
-        neg_neg = [0] * r
-        pos_pos_count = 0
-        pos_neg_count = 0
-        neg_pos_count = 0
-        neg_neg_count = 0
-        for key in B:
-            pos_pos_temp, pos_neg_temp, count1, count2 = getNodePosAndNegEmbeging(key, featureData[0], adj_pos_set,
-                                                                                  adj_neg_set)
-            pos_pos = [pos_pos_temp[i] + pos_pos[i] for i in range(0, r)]
-            pos_neg = [pos_neg_temp[i] + pos_neg[i] for i in range(0, r)]
-            pos_pos_count += 1 if count1 != 0 else 0
-            pos_neg_count += 1 if count2 != 0 else 0
-        for key in H:
-            neg_pos_temp, neg_neg_temp, count1, count2 = getNodePosAndNegEmbeging(key, featureData[1], adj_pos_set,
-                                                                                  adj_neg_set)
-            neg_pos = [neg_pos_temp[i] + neg_pos[i] for i in range(0, r)]
-            neg_neg = [neg_neg_temp[i] + neg_neg[i] for i in range(0, r)]
-            neg_pos_count += 1 if count1 != 0 else 0
-            neg_neg_count += 1 if count2 != 0 else 0
-        if pos_pos_count != 0:
-            pos_pos = [i / pos_pos_count for i in pos_pos]
-        if neg_neg_count != 0:
-            neg_neg = [i / neg_neg_count for i in neg_neg]
-        if pos_neg_count != 0:
-            pos_neg = [i / pos_neg_count for i in pos_neg]
-        if neg_pos_count != 0:
-            neg_pos = [i / neg_pos_count for i in neg_pos]
-        pos_pos.extend(neg_neg)
-        pos_neg.extend(neg_pos)
-        res = [pos_pos, pos_neg]
-
+        pos_pos_emb, pos_neg_emb, c1, c2 = getNodePosAndNegEmbeging(nodeIndex, featureData[0], adj_pos_set, adj_neg_set)
+        neg_pos_emb, neg_neg_emb, c1_, c2_ = getNodePosAndNegEmbeging(nodeIndex, featureData[1], adj_pos_set,
+                                                                      adj_neg_set)
+        pos_pos_emb.extend(neg_neg_emb)
+        pos_neg_emb.extend(neg_pos_emb)
+        res = [pos_pos_emb, pos_neg_emb]
     return res
-
-
-# 试验写两层Layer
 # 返回节点---字典形式list
-def getNodePosAndNegByLayers(Layer, node, adj_pos_set, adj_neg_set):
-    res = {}
+def getNodePosAndNegByLayers(node, adj_pos_set, adj_neg_set):
     B, H = node2PosAndNeg(node, adj_pos_set, adj_neg_set)
-    res[1] = [B, H]
-
-    newB = set()
-    newH = set()
-    for L in range(1, Layer):
-        for key in B:
-            node_pos_set, node_neg_set = node2PosAndNeg(key, adj_pos_set, adj_neg_set)
-            newB = newB | node_pos_set
-            newH = newH | node_neg_set
-
-
-        for key in H:
-            node_pos_set, node_neg_set = node2PosAndNeg(key, adj_pos_set, adj_neg_set)
-            newB = newB | node_neg_set
-            newH = newH | node_pos_set
-        res[L + 1] = [newB, newH]
-        B = set()
-        H = set()
-        B = newB
-        H = newH
+    res = [B, H]
     return res
-
 
 def calculate_class_weights(num_V, num_pos, num_neg, w_no=None):
     num_E = num_pos + num_neg

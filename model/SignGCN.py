@@ -12,7 +12,7 @@ class SignGCN(model.BaseModel.BaseModel):
         # gcn层,使用平衡理论
         self.gcnlayer = GcnLayer.GraphConvolution(self.features, self.features, self.args)
 
-    def encode(self, feature_data_pos, feature_data_neg, adj_pos_matrix, adj_neg_matrix):
+    def encode(self):
         x = torch.tensor(self.args["data"]["feat_data"],dtype=torch.float32)
         res = self.gcnlayer(x)
         return res

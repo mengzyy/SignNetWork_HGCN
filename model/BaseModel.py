@@ -29,13 +29,13 @@ class BaseModel(nn.Module):
             weight=torch.FloatTensor(args["class_weights"]))
         # loss出口
         self.addParam = 0 if args["method"] == "GCN" else 2
-        self.param_src = nn.Parameter(torch.FloatTensor(self.features*6, 3))
+        self.param_src = nn.Parameter(torch.FloatTensor(self.features*4, 3))
         self.structural_distance = nn.PairwiseDistance(p=2)
         self.lambda_structure = args["lambda_structure"]
         self.args = args
         init.xavier_uniform_(self.param_src)
 
-    def encode(self, feature_data_pos, feature_data_neg, adj_pos_matrix, adj_neg_matrix):
+    def encode(self):
         raise NotImplementedError
 
     # 不是计算全部节点loss，仅仅计算center_nodes部分的loss

@@ -19,7 +19,7 @@ class SignHGCN(model.BaseModel.BaseModel):
         self.hyperboloid = hyperboloid.Hyperboloid()
         self.hgcnLayer=HGcnLayer.HGraphConvolution(self.features,  self.features, self.args)
 
-    def encode(self, feature_data, feature_data_neg, adj_pos_matrix, adj_neg_matrix):
+    def encode(self):
         x = torch.tensor(self.args["data"]["feat_data"], dtype=torch.float32)
         # 特征需要先获得在HGCN空间的映射
         x = self.hyperboloid.proj_tan0(x, self.c)
