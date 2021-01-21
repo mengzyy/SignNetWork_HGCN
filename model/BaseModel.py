@@ -1,170 +1,112 @@
-import numpy as np
-from sklearn.metrics import classification_report
-from sklearn.metrics import roc_auc_score, average_precision_score
 import torch
-from sklearn import tree
-from sklearn.metrics import accuracy_score
-from sklearn.svm import SVC
 import torch.nn as nn
+from sklearn.decomposition import TruncatedSVD
+from torch_sparse import coalesce
+import scipy.sparse
 import torch.nn.functional as F
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import roc_auc_score, f1_score
-from random import *
-from torch.nn import init
+from torch_geometric.utils import (negative_sampling,
+                                   structured_negative_sampling)
 
-"""
-父类模型构造必须实现的方法即可
-"""
+from sklearn.metrics import roc_auc_score, f1_score
 
 
 class BaseModel(nn.Module):
-    def __init__(self, args):
+    def __init__(self, feature, hidden_channels, lambda_structure):
         super(BaseModel, self).__init__()
+        self.feature = feature
+        self.lambda_structure = lambda_structure
+        self.lin = torch.nn.Linear(2 * hidden_channels, 3)
 
-        self.nodes = args["nodes"]
-        self.features = args["features"]
-        # 定义交叉熵
-        self.CrossEntLoss = nn.CrossEntropyLoss(
-            weight=torch.FloatTensor(args["class_weights"]))
-        # loss出口
-        self.addParam = 0 if args["method"] == "GCN" else 2
-        self.param_src = nn.Parameter(torch.FloatTensor(self.features*4, 3))
-        self.structural_distance = nn.PairwiseDistance(p=2)
-        self.lambda_structure = args["lambda_structure"]
-        self.args = args
-        init.xavier_uniform_(self.param_src)
+    def split_edges(self, edge_index, test_ratio=0.2):
+        mask = torch.ones(edge_index.size(1), dtype=torch.bool)
+        mask[torch.randperm(mask.size(0))[:int(test_ratio * mask.size(0))]] = 0
 
-    def encode(self):
-        raise NotImplementedError
+        train_edge_index = edge_index[:, mask]
+        test_edge_index = edge_index[:, ~mask]
+        return train_edge_index, test_edge_index
 
-    # 不是计算全部节点loss，仅仅计算center_nodes部分的loss
-    def loss(self, center_nodes, adj_lists_pos, adj_lists_neg, final_embedding):
-        max_node_index = self.nodes - 1
-        i_loss2 = []
-        pos_no_loss2 = []
-        no_neg_loss2 = []
-        i_indices = []
-        j_indices = []
-        ys = []
-        all_nodes_set = set()
-        skipped_nodes = []
-        for i in center_nodes:
-            # 没有节点直接忽视
-            if (len(adj_lists_pos[i]) + len(adj_lists_neg[i])) == 0:
-                skipped_nodes.append(i)
-                continue
-            # add
-            all_nodes_set.add(i)
-            for j_pos in adj_lists_pos[i]:
-                i_loss2.append(i)
-                pos_no_loss2.append(j_pos)
-                while True:
-                    temp = randint(0, max_node_index)
-                    if (temp not in adj_lists_pos[i]) and (temp not in adj_lists_neg[i]):
-                        break
-                no_neg_loss2.append(temp)
-                all_nodes_set.add(temp)
+    def create_spectral_features(self, pos_edge_index, neg_edge_index,
+                                 num_nodes=None):
+        edge_index = torch.cat([pos_edge_index, neg_edge_index], dim=1)
+        N = edge_index.max().item() + 1 if num_nodes is None else num_nodes
+        edge_index = edge_index.to(torch.device('cpu'))
 
-                i_indices.append(i)
-                j_indices.append(j_pos)
-                ys.append(0)
-                all_nodes_set.add(j_pos)
-            for j_neg in adj_lists_neg[i]:
-                i_loss2.append(i)
-                no_neg_loss2.append(j_neg)
-                while True:
-                    temp = randint(0, max_node_index)
-                    if (temp not in adj_lists_pos[i]) and (temp not in adj_lists_neg[i]):
-                        break
-                pos_no_loss2.append(temp)
-                all_nodes_set.add(temp)
-                i_indices.append(i)
-                j_indices.append(j_neg)
-                ys.append(1)
-                all_nodes_set.add(j_neg)
-            need_samples = 2  # number of sampling of the no links pairs
-            cur_samples = 0
-            while cur_samples < need_samples:
-                temp_samp = randint(0, max_node_index)
-                if (temp_samp not in adj_lists_pos[i]) and (temp_samp not in adj_lists_neg[i]):
-                    # got one we can use
-                    i_indices.append(i)
-                    j_indices.append(temp_samp)
-                    ys.append(2)
-                    all_nodes_set.add(temp_samp)
-                cur_samples += 1
+        pos_val = torch.full((pos_edge_index.size(1),), 2, dtype=torch.float)
+        neg_val = torch.full((neg_edge_index.size(1),), 0, dtype=torch.float)
+        val = torch.cat([pos_val, neg_val], dim=0)
 
-        all_nodes_list = list(all_nodes_set)
-        all_nodes_map = {node: i for i, node in enumerate(all_nodes_list)}
-        # final_embedding = self.forward(all_nodes_list)
-        i_indices_mapped = [all_nodes_map[i] for i in i_indices]
-        j_indices_mapped = [all_nodes_map[j] for j in j_indices]
-        ys = torch.LongTensor(ys)
-        # now that we have the mapped indices and final embeddings we can get the loss
-        loss_entropy = self.CrossEntLoss(
-            torch.mm(torch.cat((final_embedding[i_indices_mapped],
-                                final_embedding[j_indices_mapped]), 1),
-                     self.param_src),
-            ys)
-        i_loss2 = [all_nodes_map[i] for i in i_loss2]
-        pos_no_loss2 = [all_nodes_map[i] for i in pos_no_loss2]
-        no_neg_loss2 = [all_nodes_map[i] for i in no_neg_loss2]
+        row, col = edge_index
+        edge_index = torch.cat([edge_index, torch.stack([col, row])], dim=1)
+        val = torch.cat([val, val], dim=0)
 
-        tensor_zeros = torch.zeros(len(i_loss2))
+        edge_index, val = coalesce(edge_index, val, N, N)
+        val = val - 1
 
-        loss_structure = torch.mean(
-            torch.max(
-                tensor_zeros,
-                self.structural_distance(final_embedding[i_loss2], final_embedding[pos_no_loss2]) ** 2
-                - self.structural_distance(final_embedding[i_loss2], final_embedding[no_neg_loss2]) ** 2
-            )
-        )
-        return loss_entropy + self.lambda_structure * loss_structure
+        edge_index = edge_index.detach().numpy()
+        val = val.detach().numpy()
+        A = scipy.sparse.coo_matrix((val, edge_index), shape=(N, N))
+        svd = TruncatedSVD(n_components=self.feature, n_iter=128)
+        svd.fit(A)
+        x = svd.components_.T
+        return torch.from_numpy(x).to(torch.float).to(pos_edge_index.device)
 
-    # 指标测试
-    def test_func(self, adj_lists_pos, adj_lists_neg, test_adj_lists_pos, test_adj_lists_neg, final_embedding):
-        # no map necessary for ids as we are using all nodes
-        final_embedding = final_embedding.detach().numpy()
-        # training dataset
-        X_train = []
-        y_train = []
-        X_val = []
-        y_test_true = []
-        for i in range(self.nodes):
-            for j in adj_lists_pos[i]:
-                temp = np.append(final_embedding[i], final_embedding[j])
-                X_train.append(temp)
-                y_train.append(1)
+    def loss(self, z, pos_edge_index, neg_edge_index):
+        nll_loss = self.nll_loss(z, pos_edge_index, neg_edge_index)
+        loss_1 = self.pos_embedding_loss(z, pos_edge_index)
+        loss_2 = self.neg_embedding_loss(z, neg_edge_index)
+        return nll_loss + self.lambda_structure * (loss_1 + loss_2)
 
-            for j in adj_lists_neg[i]:
-                temp = np.append(final_embedding[i], final_embedding[j])
-                X_train.append(temp)
-                y_train.append(-1)
+    def nll_loss(self, z, pos_edge_index, neg_edge_index):
+        edge_index = torch.cat([pos_edge_index, neg_edge_index], dim=1)
+        none_edge_index = negative_sampling(edge_index, z.size(0))
 
-            for j in test_adj_lists_pos[i]:
-                temp = np.append(final_embedding[i], final_embedding[j])
-                X_val.append(temp)
-                y_test_true.append(1)
+        nll_loss = 0
+        nll_loss += F.nll_loss(
+            self.discriminate(z, pos_edge_index),
+            pos_edge_index.new_full((pos_edge_index.size(1),), 0))
+        nll_loss += F.nll_loss(
+            self.discriminate(z, neg_edge_index),
+            neg_edge_index.new_full((neg_edge_index.size(1),), 1))
+        nll_loss += F.nll_loss(
+            self.discriminate(z, none_edge_index),
+            none_edge_index.new_full((none_edge_index.size(1),), 2))
+        return nll_loss / 3.0
 
-            for j in test_adj_lists_neg[i]:
-                temp = np.append(final_embedding[i], final_embedding[j])
-                X_val.append(temp)
-                y_test_true.append(-1)
+    def pos_embedding_loss(self, z, pos_edge_index):
+        i, j, k = structured_negative_sampling(pos_edge_index, z.size(0))
 
-        y_train = np.asarray(y_train)
-        X_train = np.asarray(X_train)
-        X_val = np.asarray(X_val)
-        y_test_true = np.asarray(y_test_true)
-        # model = RandomForestClassifier(n_estimators=10, random_state=11, class_weight='balanced')
-        model = LogisticRegression(class_weight='balanced')
-        X_train_isf = np.isfinite(X_train)
-        if X_train_isf.all() == False:
-            return 0, 0
-        model.fit(X_train, y_train)
-        y_test_pred = model.predict(X_val)
-        auc = roc_auc_score(y_test_true, y_test_pred)
-        f1 = f1_score(y_test_true, y_test_pred)
-        # print(classification_report(y_test_true, y_test_pred))
-        # print("AC", accuracy_score(y_test_true, y_test_pred))
+        out = (z[i] - z[j]).pow(2).sum(dim=1) - (z[i] - z[k]).pow(2).sum(dim=1)
+        return torch.clamp(out, min=0).mean()
+
+    def neg_embedding_loss(self, z, neg_edge_index):
+        i, j, k = structured_negative_sampling(neg_edge_index, z.size(0))
+        out = (z[i] - z[k]).pow(2).sum(dim=1) - (z[i] - z[j]).pow(2).sum(dim=1)
+        return torch.clamp(out, min=0).mean()
+
+    def discriminate(self, z, edge_index):
+        value = torch.cat([z[edge_index[0]], z[edge_index[1]]], dim=1)
+        value = self.lin(value)
+        return torch.log_softmax(value, dim=1)
+
+    def test(self, z, pos_edge_index, neg_edge_index):
+        """Evaluates node embeddings :obj:`z` on positive and negative test
+        edges by computing AUC and F1 scores.
+
+        Args:
+            z (Tensor): The node embeddings.
+            pos_edge_index (LongTensor): The positive edge indices.
+            neg_edge_index (LongTensor): The negative edge indices.
+        """
+        with torch.no_grad():
+            pos_p = self.discriminate(z, pos_edge_index)[:, :2].max(dim=1)[1]
+            neg_p = self.discriminate(z, neg_edge_index)[:, :2].max(dim=1)[1]
+        pred = (1 - torch.cat([pos_p, neg_p])).cpu()
+        y = torch.cat(
+            [pred.new_ones((pos_p.size(0))),
+             pred.new_zeros(neg_p.size(0))])
+        pred, y = pred.numpy(), y.numpy()
+
+        auc = roc_auc_score(y, pred)
+        f1 = f1_score(y, pred, average='binary') if pred.sum() > 0 else 0
+
         return auc, f1

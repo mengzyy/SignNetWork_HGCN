@@ -1,39 +1,50 @@
 import model.BaseModel
-from layers import GcnLayer, HGcnLayer
+from layers import SignGcnLayer, SignHGcnLayer
 import torch
-from layers import GcnLayer
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.nn.init as init
-from torch.nn.modules.module import Module
+from layers.Hypact import HypAct
+from layers.SignHGcnLayer import HSignedConv
 from utils import hyperboloid
-from layers import HGcnLayer
 
 
 class SignHGCN(model.BaseModel.BaseModel):
 
-    def __init__(self, args):
-        super(SignHGCN, self).__init__(args)
-        # 曲率
-        self.c = torch.tensor(args["c"])
+    def __init__(self, in_features, out_features, lambda_structure, num_layers):
+        super(SignHGCN, self).__init__(in_features, out_features, lambda_structure)
+        self.in_features = in_features
+        self.out_features = out_features
+        self.lambda_structure = lambda_structure
+        self.num_layers = num_layers
         self.hyperboloid = hyperboloid.Hyperboloid()
-        self.hgcnLayer=HGcnLayer.HGraphConvolution(self.features,  self.features, self.args)
 
-    def encode(self):
-        x = torch.tensor(self.args["data"]["feat_data"], dtype=torch.float32)
-        # 特征需要先获得在HGCN空间的映射
-        x = self.hyperboloid.proj_tan0(x, self.c)
-        x = self.hyperboloid.expmap0(x, c=self.c)
-        x = self.hyperboloid.proj(x, c=self.c)
+        # agg 1
+        self.conv1 = HSignedConv(in_features, out_features // 2,
+                                 first_aggr=True)
+        self.hrelu1 = HypAct(0.5, 0.5)
 
-        res = self.hgcnLayer(x)
-        return res
+        # agg 2other
+        self.convs = torch.nn.ModuleList()
+        self.hrelus = torch.nn.ModuleList()
+        for i in range(num_layers - 1):
+            self.convs.append(
+                HSignedConv(out_features // 2, out_features // 2,
+                            first_aggr=False))
+            self.hrelus.append(HypAct(0.5, 0.5))
 
-    # loss计算
-    def loss(self, center_nodes, adj_lists_pos, adj_lists_neg, final_embedding):
-        return super(SignHGCN, self).loss(center_nodes, adj_lists_pos, adj_lists_neg, final_embedding)
+        self.reset_parameters()
 
-    # 指标测试
-    def test_func(self, adj_lists_pos, adj_lists_neg, test_adj_lists_pos, test_adj_lists_neg, final_embedding):
-        return super(SignHGCN, self).test_func(adj_lists_pos, adj_lists_neg, test_adj_lists_pos, test_adj_lists_neg,
-                                               final_embedding)
+    def reset_parameters(self):
+        self.conv1.reset_parameters()
+        for conv in self.convs:
+            conv.reset_parameters()
+        self.lin.reset_parameters()
+
+    def forward(self, x, pos_edge_index, neg_edge_index):
+
+        x = self.hyperboloid.proj_tan0(x, 0.5)
+        x = self.hyperboloid.expmap0(x, 0.5)
+        x = self.hyperboloid.proj(x, 0.5)
+
+        z = self.hrelu1(self.conv1(x, pos_edge_index, neg_edge_index))
+        for i in range(self.num_layers - 1):
+            z = self.hrelus[i](self.convs[i](z, pos_edge_index, neg_edge_index))
+        return z

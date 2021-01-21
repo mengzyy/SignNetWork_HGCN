@@ -1,27 +1,37 @@
 import model.BaseModel
-from layers import GcnLayer
+import torch.nn.functional as F
 import torch
-import torch.nn as nn
-from torch.nn import init
+from SignGcnLayer import SignedConv
+
 
 class SignGCN(model.BaseModel.BaseModel):
 
-    def __init__(self, args):
-        super(SignGCN, self).__init__(args)
-        # gcn核心层
-        # gcn层,使用平衡理论
-        self.gcnlayer = GcnLayer.GraphConvolution(self.features, self.features, self.args)
+    def __init__(self, in_features, out_features, lambda_structure, num_layers):
+        super(SignGCN, self).__init__(in_features, out_features, lambda_structure)
+        self.in_features = in_features
+        self.out_features = out_features
+        self.lambda_structure = lambda_structure
+        self.num_layers = num_layers
+        # agg 1
+        self.conv1 = SignedConv(in_features, out_features // 2,
+                                first_aggr=True)
+        # agg 2other
+        self.convs = torch.nn.ModuleList()
+        for i in range(num_layers - 1):
+            self.convs.append(
+                SignedConv(out_features // 2, out_features // 2,
+                           first_aggr=False))
 
-    def encode(self):
-        x = torch.tensor(self.args["data"]["feat_data"],dtype=torch.float32)
-        res = self.gcnlayer(x)
-        return res
+        self.reset_parameters()
 
-    # loss计算
-    def loss(self, center_nodes, adj_lists_pos, adj_lists_neg, final_embedding):
-        return super(SignGCN, self).loss(center_nodes, adj_lists_pos, adj_lists_neg, final_embedding)
+    def reset_parameters(self):
+        self.conv1.reset_parameters()
+        for conv in self.convs:
+            conv.reset_parameters()
+        self.lin.reset_parameters()
 
-    # 指标测试
-    def test_func(self, adj_lists_pos, adj_lists_neg, test_adj_lists_pos, test_adj_lists_neg, final_embedding):
-        return super(SignGCN, self).test_func(adj_lists_pos, adj_lists_neg, test_adj_lists_pos, test_adj_lists_neg,
-                                              final_embedding)
+    def forward(self, x, pos_edge_index, neg_edge_index):
+        z = F.relu(self.conv1(x, pos_edge_index, neg_edge_index))
+        for conv in self.convs:
+            z = F.relu(conv(z, pos_edge_index, neg_edge_index))
+        return z

@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.modules.module import Module
-from utils import hyperboloid
+from aggmethod import hyperboloid
 from layers import AttLayers
 
 
