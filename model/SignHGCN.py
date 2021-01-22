@@ -19,17 +19,25 @@ class SignHGCN(model.BaseModel.BaseModel):
         # agg 1
         self.conv1 = HSignedConv(in_features, out_features // 2,
                                  first_aggr=True)
-        self.hrelu1 = HypAct(0.5, 0.5)
 
         # agg 2other
         self.convs = torch.nn.ModuleList()
         self.hrelus = torch.nn.ModuleList()
-        for i in range(num_layers - 1):
-            self.convs.append(
-                HSignedConv(out_features // 2, out_features // 2,
-                            first_aggr=False))
-            self.hrelus.append(HypAct(0.5, 0.5))
 
+        # 可训练曲率list
+        self.c = torch.nn.Parameter(torch.FloatTensor(1), requires_grad=True)
+        self.clist = []
+        for i in range(num_layers):
+            self.clist.append([torch.nn.Parameter(torch.FloatTensor(1), requires_grad=True),
+                               torch.nn.Parameter(torch.FloatTensor(1), requires_grad=True)])
+
+        # self.hrelu1 = HypAct(self.clist[0][0], self.clist[0][1])
+        # for i in range(num_layers - 1):
+        #     self.convs.append(
+        #         HSignedConv(out_features // 2, out_features // 2,
+        #                     first_aggr=False))
+        #     self.hrelus.append(HypAct(self.clist[i + 1][0], self.clist[i + 1][1]))
+        self.updatec()
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -37,14 +45,25 @@ class SignHGCN(model.BaseModel.BaseModel):
         for conv in self.convs:
             conv.reset_parameters()
         self.lin.reset_parameters()
+        self.c.data.fill_(0.5)
+        for ct in self.clist:
+            ct[0].data.fill_(0.5)
+            ct[1].data.fill_(0.5)
 
     def forward(self, x, pos_edge_index, neg_edge_index):
-
-        x = self.hyperboloid.proj_tan0(x, 0.5)
-        x = self.hyperboloid.expmap0(x, 0.5)
-        x = self.hyperboloid.proj(x, 0.5)
-
+        self.updatec()
+        x = self.hyperboloid.proj_tan0(x, self.c)
+        x = self.hyperboloid.expmap0(x, self.c)
+        x = self.hyperboloid.proj(x, self.c)
         z = self.hrelu1(self.conv1(x, pos_edge_index, neg_edge_index))
         for i in range(self.num_layers - 1):
             z = self.hrelus[i](self.convs[i](z, pos_edge_index, neg_edge_index))
         return z
+
+    def updatec(self):
+        self.hrelu1 = HypAct(self.clist[0][0], self.clist[0][1])
+        for i in range(self.num_layers - 1):
+            self.convs.append(
+                HSignedConv(self.out_features // 2, self.out_features // 2,
+                            first_aggr=False))
+            self.hrelus.append(HypAct(self.clist[i + 1][0], self.clist[i + 1][1]))

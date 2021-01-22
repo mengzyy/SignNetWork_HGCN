@@ -5,7 +5,7 @@ from layers.aggmethod import computeNegFeaMean
 
 class HSignedConv(Module):
 
-    def __init__(self, in_features, out_features, first_aggr=True):
+    def __init__(self, in_features, out_features, c=1,first_aggr=True):
         super(HSignedConv, self).__init__()
         # pos ,activate
         self.lin_pos = None
@@ -17,17 +17,18 @@ class HSignedConv(Module):
         self.lin_neg_cc = None
         self.first_aggr = first_aggr
         self.in_features = in_features
+        self.c=c
 
         if first_aggr:
-            self.lin_pos = HypLinear.HypLinear(in_features=in_features, out_features=out_features, use_bias=False)
-            self.lin_pos_cc = HypLinear.HypLinear(in_features=in_features, out_features=out_features, use_bias=True)
-            self.lin_neg = HypLinear.HypLinear(in_features=in_features, out_features=out_features, use_bias=False)
-            self.lin_neg_cc = HypLinear.HypLinear(in_features=in_features, out_features=out_features, use_bias=True)
+            self.lin_pos = HypLinear.HypLinear(in_features=in_features, out_features=out_features,c=self.c, use_bias=False)
+            self.lin_pos_cc = HypLinear.HypLinear(in_features=in_features, out_features=out_features, c=self.c,use_bias=True)
+            self.lin_neg = HypLinear.HypLinear(in_features=in_features, out_features=out_features,c=self.c, use_bias=False)
+            self.lin_neg_cc = HypLinear.HypLinear(in_features=in_features, out_features=out_features,c=self.c, use_bias=True)
         else:
-            self.lin_pos = HypLinear.HypLinear(in_features=in_features * 2, out_features=out_features, use_bias=False)
-            self.lin_pos_cc = HypLinear.HypLinear(in_features=in_features, out_features=out_features, use_bias=True)
-            self.lin_neg = HypLinear.HypLinear(in_features=in_features * 2, out_features=out_features, use_bias=False)
-            self.lin_neg_cc = HypLinear.HypLinear(in_features=in_features, out_features=out_features, use_bias=True)
+            self.lin_pos = HypLinear.HypLinear(in_features=in_features * 2, out_features=out_features, c=self.c,use_bias=False)
+            self.lin_pos_cc = HypLinear.HypLinear(in_features=in_features, out_features=out_features,c=self.c, use_bias=True)
+            self.lin_neg = HypLinear.HypLinear(in_features=in_features * 2, out_features=out_features, c=self.c,use_bias=False)
+            self.lin_neg_cc = HypLinear.HypLinear(in_features=in_features, out_features=out_features, c=self.c,use_bias=True)
         self.reset_parameters()
 
 

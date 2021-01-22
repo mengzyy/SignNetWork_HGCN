@@ -25,7 +25,7 @@ int_features = 64
 modelName = "GCN"  # GCN or HGCN
 # 网络卷积后的特征大小 默认为64
 out_features = 64
-# 卷积层大小,默认为1+ 【2】即1次邻居卷积 加num_layers层间接邻居卷积
+# 卷积层大小,即1次邻居卷积 加num_layers-1层间接邻居卷积
 num_layers = 2
 # loss 参数
 lambda_structure = 5
