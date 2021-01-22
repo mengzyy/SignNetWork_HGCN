@@ -3,7 +3,6 @@ from model.SignGCN import SignGCN
 from model.SignHGCN import SignHGCN
 from utils.loadData import loadData
 
-
 # name = 'BitcoinOTC-2'
 # path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', name)
 # dataset = BitcoinOTC(path, edge_window_size=1)
@@ -18,11 +17,11 @@ from utils.loadData import loadData
 # 网络文件索引 最大为9 最小为1
 trainFiles = "0"
 # 网络训练网络文件名
-trainName = "bitcoinAlpha"  # bitcoinAlpha bitcoinOTC epinions_truncated slashdot_truncated
+trainName = "bitcoinOTC"  # bitcoinAlpha bitcoinOTC epinions_truncated slashdot_truncated
 # 网络经过tsvd分解的特征大小 默认为64
 int_features = 64
 # 模型
-modelName = "GCN"  # GCN or HGCN
+modelName = "HGCN"  # GCN or HGCN
 # 网络卷积后的特征大小 默认为64
 out_features = 64
 # 卷积层大小,即1次邻居卷积 加num_layers-1层间接邻居卷积
@@ -33,8 +32,6 @@ lambda_structure = 5
 lr = 0.01
 
 pos_edge_index, neg_edge_index = loadData(trainFiles, trainName)
-
-
 model = None
 if modelName == "HGCN":
     model = SignHGCN(int_features, out_features, num_layers=num_layers, lambda_structure=lambda_structure)
@@ -66,7 +63,7 @@ def est3():
     return model.test(z, test_pos_edge_index, test_neg_edge_index)
 
 
-for epoch in range(1010):
+for epoch in range(2000):
     loss = train()
     auc, f1 = est3()
     print('Epoch: {:03d}, Loss: {:.4f}, AUC: {:.4f}, F1: {:.4f}'.format(
