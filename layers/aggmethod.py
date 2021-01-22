@@ -3,8 +3,10 @@ import torch
 
 
 def computeNegFeaMean(adj, x):
-    adj = adj.cuda().data.cpu().numpy()
-    x = x.cuda().data.cpu().numpy()
+    # adj = adj.cuda().data.cpu().numpy()
+    # x = x.cuda().data.cpu().numpy()
+    adj = adj.detach().numpy()
+    x = x.detach().numpy()
     nodes, feas = x.shape
     info = dict()
     temp = np.zeros((nodes, feas))
@@ -19,4 +21,5 @@ def computeNegFeaMean(adj, x):
     for i in range(0, nodes):
         if i not in info:
             temp[i] += x[i]
-    return torch.FloatTensor(temp).cuda()
+    # return torch.FloatTensor(temp).cuda()
+    return torch.FloatTensor(temp)
