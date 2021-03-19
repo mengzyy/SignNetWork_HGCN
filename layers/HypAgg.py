@@ -6,8 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.modules.module import Module
-from aggmethod import hyperboloid
-from layers import AttLayers
+from utils import hyperboloid
 
 
 class HypAgg(Module):

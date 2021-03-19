@@ -2,6 +2,7 @@ import torch
 from model.SignGCN import SignGCN
 from model.SignHGCN import SignHGCN
 from utils.loadData import loadData
+from utils.loadData import split_edges
 
 # name = 'BitcoinOTC-2'
 # path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', name)
@@ -21,7 +22,7 @@ trainName = "bitcoinOTC"  # bitcoinAlpha bitcoinOTC epinions_truncated slashdot_
 # 网络经过tsvd分解的特征大小 默认为64
 int_features = 64
 # 模型
-modelName = "HGCN"  # GCN or HGCN
+modelName = "GCN"  # GCN or HGCN
 # 网络卷积后的特征大小 默认为64
 out_features = 64
 # 卷积层大小,即1次邻居卷积 加num_layers-1层间接邻居卷积
@@ -32,16 +33,23 @@ lambda_structure = 5
 lr = 0.01
 
 pos_edge_index, neg_edge_index = loadData(trainFiles, trainName)
+train_pos_edge_index, test_pos_edge_index = split_edges(pos_edge_index)
+train_neg_edge_index, test_neg_edge_index = split_edges(neg_edge_index)
+# 自训练向量大小
+posAtt = train_pos_edge_index.shape[1]
+negAtt = train_neg_edge_index.shape[1]
+
+
+
 model = None
 if modelName == "HGCN":
     model = SignHGCN(int_features, out_features, num_layers=num_layers, lambda_structure=lambda_structure)
 if modelName == "GCN":
-    model = SignGCN(int_features, out_features, num_layers=num_layers, lambda_structure=lambda_structure)
+    model = SignGCN(int_features, out_features, num_layers=num_layers, lambda_structure=lambda_structure, posAtt=posAtt,
+                    negAtt=negAtt)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
 
-train_pos_edge_index, test_pos_edge_index = model.split_edges(pos_edge_index)
-train_neg_edge_index, test_neg_edge_index = model.split_edges(neg_edge_index)
 # 奇异值分解获得 n*64 的 特征表示
 x = model.create_spectral_features(train_pos_edge_index, train_neg_edge_index)
 
@@ -49,10 +57,15 @@ x = model.create_spectral_features(train_pos_edge_index, train_neg_edge_index)
 def train():
     model.train()
     optimizer.zero_grad()
+
     z = model(x, train_pos_edge_index, train_neg_edge_index)
+    # 算loss
     loss = model.loss(z, train_pos_edge_index, train_neg_edge_index)
+    # 反向传播 更新的w
     loss.backward()
+    # 写回w
     optimizer.step()
+
     return loss.item()
 
 

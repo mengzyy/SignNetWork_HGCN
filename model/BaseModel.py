@@ -10,20 +10,15 @@ from torch_geometric.utils import (negative_sampling,
 from sklearn.metrics import roc_auc_score, f1_score
 
 
+# base
 class BaseModel(nn.Module):
-    def __init__(self, feature, hidden_channels, lambda_structure):
+    def __init__(self, feature, hidden_channels, lambda_structure, posAtt, negAtt):
         super(BaseModel, self).__init__()
         self.feature = feature
         self.lambda_structure = lambda_structure
         self.lin = torch.nn.Linear(2 * hidden_channels, 3)
-
-    def split_edges(self, edge_index, test_ratio=0.2):
-        mask = torch.ones(edge_index.size(1), dtype=torch.bool)
-        mask[torch.randperm(mask.size(0))[:int(test_ratio * mask.size(0))]] = 0
-
-        train_edge_index = edge_index[:, mask]
-        test_edge_index = edge_index[:, ~mask]
-        return train_edge_index, test_edge_index
+        self.posAtt = posAtt
+        self.negAtt = negAtt
 
     def create_spectral_features(self, pos_edge_index, neg_edge_index,
                                  num_nodes=None):
