@@ -2,7 +2,7 @@ import model.BaseModel
 import torch.nn.functional as F
 import torch
 from SignGcnLayer import SignedConv
-
+from utils import hyperboloid
 
 class SignGCN(model.BaseModel.BaseModel):
 
@@ -13,10 +13,11 @@ class SignGCN(model.BaseModel.BaseModel):
         self.lambda_structure = lambda_structure
         self.num_layers = num_layers
 
-        # 卷积层
+
+
         self.conv1 = SignedConv(in_features, out_features // 2, posAtt, negAtt,
                                 first_aggr=True)
-        # agg 2other 二层卷积
+
         self.convs = torch.nn.ModuleList()
         for i in range(num_layers - 1):
             self.convs.append(
@@ -32,7 +33,6 @@ class SignGCN(model.BaseModel.BaseModel):
             conv.reset_parameters()
         self.lin.reset_parameters()
 
-    # 每个模型 一定 有 前向传播 类似 算法
     def forward(self, x, pos_edge_index, neg_edge_index):
         # 卷积 激活
         z = F.relu(self.conv1(x, pos_edge_index, neg_edge_index))

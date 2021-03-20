@@ -18,7 +18,7 @@ from utils.loadData import split_edges
 # 网络文件索引 最大为9 最小为1
 trainFiles = "0"
 # 网络训练网络文件名
-trainName = "bitcoinOTC"  # bitcoinAlpha bitcoinOTC epinions_truncated slashdot_truncated
+trainName = "bitcoinAlpha"  # bitcoinAlpha bitcoinOTC epinions_truncated slashdot_truncated
 # 网络经过tsvd分解的特征大小 默认为64
 int_features = 64
 # 模型
@@ -65,7 +65,6 @@ def train():
     loss.backward()
     # 写回w
     optimizer.step()
-
     return loss.item()
 
 

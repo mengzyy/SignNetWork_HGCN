@@ -8,6 +8,7 @@ from torch_geometric.utils import (negative_sampling,
                                    structured_negative_sampling)
 
 from sklearn.metrics import roc_auc_score, f1_score
+from utils import hyperboloid
 
 
 # base
@@ -16,9 +17,11 @@ class BaseModel(nn.Module):
         super(BaseModel, self).__init__()
         self.feature = feature
         self.lambda_structure = lambda_structure
-        self.lin = torch.nn.Linear(2 * hidden_channels, 3)
+        self.lin = torch.nn.Linear(2*hidden_channels , 3)
         self.posAtt = posAtt
         self.negAtt = negAtt
+        self.hyperboloid = hyperboloid.Hyperboloid()
+        self.c = 2
 
     def create_spectral_features(self, pos_edge_index, neg_edge_index,
                                  num_nodes=None):
@@ -46,9 +49,16 @@ class BaseModel(nn.Module):
         return torch.from_numpy(x).to(torch.float).to(pos_edge_index.device)
 
     def loss(self, z, pos_edge_index, neg_edge_index):
+        # 【1.映射至双曲空间 2.算距离】
+        # 映射双曲时需要加一个特征点
+        vals = torch.cat([z[:, 0:1], z], 1)
+        # 映射至双曲
+        x = self.hyperboloid.proj_tan0(vals, self.c)
+        x = self.hyperboloid.expmap0(x, self.c)
+        x = self.hyperboloid.proj(x, self.c)
         nll_loss = self.nll_loss(z, pos_edge_index, neg_edge_index)
-        loss_1 = self.pos_embedding_loss(z, pos_edge_index)
-        loss_2 = self.neg_embedding_loss(z, neg_edge_index)
+        loss_1 = self.pos_embedding_loss(x, pos_edge_index)
+        loss_2 = self.neg_embedding_loss(x, neg_edge_index)
         return nll_loss + self.lambda_structure * (loss_1 + loss_2)
 
     def nll_loss(self, z, pos_edge_index, neg_edge_index):
@@ -69,13 +79,18 @@ class BaseModel(nn.Module):
 
     def pos_embedding_loss(self, z, pos_edge_index):
         i, j, k = structured_negative_sampling(pos_edge_index, z.size(0))
-
-        out = (z[i] - z[j]).pow(2).sum(dim=1) - (z[i] - z[k]).pow(2).sum(dim=1)
+        hdis1 = self.hyperboloid.sqdist(z[i], z[j], self.c)
+        hdis2 = self.hyperboloid.sqdist(z[i], z[k], self.c)
+        out = hdis1 - hdis2
+        # out = (z[i] - z[j]).pow(2).sum(dim=1) - (z[i] - z[k]).pow(2).sum(dim=1)
         return torch.clamp(out, min=0).mean()
 
     def neg_embedding_loss(self, z, neg_edge_index):
         i, j, k = structured_negative_sampling(neg_edge_index, z.size(0))
-        out = (z[i] - z[k]).pow(2).sum(dim=1) - (z[i] - z[j]).pow(2).sum(dim=1)
+        hdis1 = self.hyperboloid.sqdist(z[i], z[k], self.c)
+        hdis2 = self.hyperboloid.sqdist(z[i], z[j], self.c)
+        out = hdis1 - hdis2
+        # out = (z[i] - z[k]).pow(2).sum(dim=1) - (z[i] - z[j]).pow(2).sum(dim=1)
         return torch.clamp(out, min=0).mean()
 
     def discriminate(self, z, edge_index):
@@ -92,6 +107,13 @@ class BaseModel(nn.Module):
             pos_edge_index (LongTensor): The positive edge indices.
             neg_edge_index (LongTensor): The negative edge indices.
         """
+        # 【1.映射至双曲空间 2.算距离】
+        # 映射双曲时需要加一个特征点
+        # vals = torch.cat([z[:, 0:1], z], 1)
+        # 映射至双曲
+        # x = self.hyperboloid.proj_tan0(vals, self.c)
+        # x = self.hyperboloid.expmap0(x, self.c)
+        # x = self.hyperboloid.proj(x, self.c)
         with torch.no_grad():
             pos_p = self.discriminate(z, pos_edge_index)[:, :2].max(dim=1)[1]
             neg_p = self.discriminate(z, neg_edge_index)[:, :2].max(dim=1)[1]

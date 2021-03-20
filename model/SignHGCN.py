@@ -14,7 +14,7 @@ class SignHGCN(model.BaseModel.BaseModel):
         self.out_features = out_features
         self.lambda_structure = lambda_structure
         self.num_layers = num_layers
-        self.hyperboloid = hyperboloid.Hyperboloid()
+
 
         # agg 1
         self.conv1 = HSignedConv(in_features, out_features // 2, first_aggr=True)
