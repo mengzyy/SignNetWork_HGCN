@@ -1,9 +1,9 @@
-import torch
+
 from model.SignGCN import SignGCN
 from model.SignHGCN import SignHGCN
 from utils.loadData import loadData
 from utils.loadData import split_edges
-
+import torch
 # name = 'BitcoinOTC-2'
 # path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', name)
 # dataset = BitcoinOTC(path, edge_window_size=1)

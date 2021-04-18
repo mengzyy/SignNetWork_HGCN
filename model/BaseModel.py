@@ -9,6 +9,7 @@ from torch_geometric.utils import (negative_sampling,
 
 from sklearn.metrics import roc_auc_score, f1_score
 from utils import hyperboloid
+from model.MutualNet import MutualInfoNet
 
 
 # base
@@ -17,11 +18,15 @@ class BaseModel(nn.Module):
         super(BaseModel, self).__init__()
         self.feature = feature
         self.lambda_structure = lambda_structure
-        self.lin = torch.nn.Linear(2*hidden_channels , 3)
+        self.lin = torch.nn.Linear(2 * hidden_channels, 3)
         self.posAtt = posAtt
         self.negAtt = negAtt
         self.hyperboloid = hyperboloid.Hyperboloid()
-        self.c = 2
+        self.c = 3
+        self.gamma=0.1
+
+        # 互信息层
+        self.info_net = MutualInfoNet(2 * (hidden_channels+1))
 
     def create_spectral_features(self, pos_edge_index, neg_edge_index,
                                  num_nodes=None):
@@ -59,7 +64,9 @@ class BaseModel(nn.Module):
         nll_loss = self.nll_loss(z, pos_edge_index, neg_edge_index)
         loss_1 = self.pos_embedding_loss(x, pos_edge_index)
         loss_2 = self.neg_embedding_loss(x, neg_edge_index)
-        return nll_loss + self.lambda_structure * (loss_1 + loss_2)
+        loss_3 =self.computeMutual(x, pos_edge_index, neg_edge_index)
+
+        return nll_loss + self.lambda_structure * (loss_1 + loss_2)+self.gamma*loss_3
 
     def nll_loss(self, z, pos_edge_index, neg_edge_index):
         edge_index = torch.cat([pos_edge_index, neg_edge_index], dim=1)
@@ -98,15 +105,38 @@ class BaseModel(nn.Module):
         value = self.lin(value)
         return torch.log_softmax(value, dim=1)
 
-    def test(self, z, pos_edge_index, neg_edge_index):
-        """Evaluates node embeddings :obj:`z` on positive and negative test
-        edges by computing AUC and F1 scores.
+    def computeMutual(self, z, pos_edge_index, neg_edge_index):
+        edge_index = torch.cat([pos_edge_index, neg_edge_index], dim=1)
+        none_edge_index = negative_sampling(edge_index, z.size(0))
 
-        Args:
-            z (Tensor): The node embeddings.
-            pos_edge_index (LongTensor): The positive edge indices.
-            neg_edge_index (LongTensor): The negative edge indices.
+        pos_y = pos_edge_index.new_full((pos_edge_index.size(1),), 0).float()
+        neg_y = neg_edge_index.new_full((neg_edge_index.size(1),), 1).float()
+        neu_y = none_edge_index.new_full((none_edge_index.size(1),), 2).float()
+        all_y = torch.cat((pos_y, neg_y, neu_y))
+        idx = torch.randperm(all_y.size()[0])
+        shuffle_y = all_y[idx]
+        index = torch.cat((pos_edge_index, neg_edge_index, none_edge_index), 1)
+        info_pred = self.discriminate2(z, index, id=all_y)
+        info_shuffle = self.discriminate2(z, index, id=shuffle_y)
+        mutual_loss = torch.mean(info_pred) - torch.log(torch.mean(torch.exp(info_shuffle)))
+        return -mutual_loss
+
+    def discriminate2(self, z, edge_index, id=None, last=False):
         """
+        Args:
+            x (Tensor): The input node features.
+            edge_index (LongTensor): The edge indices.
+        """
+        if id is not None:
+            value = torch.cat([z[edge_index[0]], z[edge_index[1]]], dim=1)
+            out = self.info_net(value, id)
+
+        else:
+            out = torch.clamp_min(1. / (torch.exp(
+                (self.hyperboloid.sqdist(z[edge_index[0]], z[edge_index[1]], 1) - self.r) / self.t) + 1.0), 0)
+        return out
+
+    def test(self, z, pos_edge_index, neg_edge_index):
         # 【1.映射至双曲空间 2.算距离】
         # 映射双曲时需要加一个特征点
         # vals = torch.cat([z[:, 0:1], z], 1)

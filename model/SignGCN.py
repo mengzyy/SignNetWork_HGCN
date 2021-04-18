@@ -3,7 +3,6 @@ import torch.nn.functional as F
 import torch
 from SignGcnLayer import SignedConv
 from utils import hyperboloid
-
 class SignGCN(model.BaseModel.BaseModel):
 
     def __init__(self, in_features, out_features, lambda_structure, num_layers, posAtt, negAtt):
